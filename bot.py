@@ -22,7 +22,7 @@ load_tweet_csv = bool(settings["setup"]["load_tweet_csv"]=="True")
 min_tweet_length = settings["etc"]["min_tweet_length"]
 max_tweet_length = settings["etc"]["max_tweet_length"]
 
-#botアカウント情報
+#airtoxinbotbot
 consumer_key = settings["botaccount"]["consumer_key"]
 consumer_secret = settings["botaccount"]["consumer_secret"]
 access_token = settings["botaccount"]["access_token"]
@@ -85,7 +85,7 @@ def removeURL(text):
 def loadTweetCsvFile(filename):
     import csv
     with open(filename) as f:
-        reader = csv.reader(f)
+        reader = csv.reader((line.replace("\x00", "") for line in f), delimiter=",")
         header = reader.next()
         csv_tweets = [twitter.Status(id=line[0], text=line[7].decode("utf-8")) for line in reader]
     return csv_tweets
@@ -125,6 +125,7 @@ def generateMarkovSentence(markov_dict):
     front = random.choice(startKeys)
     markov_sentence = front[1] #ツイートの初めの文字
     while True:
+        print front
         back = random.choice(markov_dict[front])
         if back == u"\\end\\":
             if len(markov_sentence) < min_tweet_length: #短すぎるツイートはもう一回生成し直す
@@ -139,11 +140,23 @@ def generateMarkovSentence(markov_dict):
     markov_sentence = re.sub(r"\\break\\", "\n", markov_sentence)
     return markov_sentence
 
+def generate_twitpic():
+    strings = [chr(n) for n in range(ord("0"), ord("9")+1)] + [chr(s) for s in range(ord("a"), ord("z")+1)]
+    twitpic_url = ""
+    for i in range(6):
+        while 1:
+            choose_str = random.choice(strings)
+            if twitpic_url + choose_str < "cbupg7":
+                twitpic_url += choose_str
+                break
+    return " http://twitpic.com/"+twitpic_url
+
 def sendTweet(tweet, mute=False):
     tweet = re.sub(u"^RT ", u"", tweet) #先頭のRTを削除
     tweet = re.sub(u"@[0-9A-Za-z_]*", u"", tweet) #リプライの表示を削除
-    tweet = m.sub(u"", tweet) #urlを削除
-    re.sub(u"@", u"©", tweet) #ツイート中の@を©に変換
+    twitpic = generate_twitpic()
+    tweet = m.sub(twitpic, tweet)
+    #re.sub(u"@", u"©", tweet) #ツイート中の@を©に変換
     try:
         status = api.PostUpdate(tweet)
     except twitter.TwitterError:
@@ -155,8 +168,30 @@ def sendTweet(tweet, mute=False):
         except UnboundLocalError:
             pass
 
+def generate_replie(user_id):
+    markov_dict = loadObject("./datas/markov_dict.dump")
+    replie = generateMarkovSentence(markov_dict)
+    replie = re.sub(r"^\w*", "@%s "%user_id, replie)
+    return replie
+
 def sendReply():
-    pass
+    old_rep = loadObject("old_replie.dump")
+    reps = api.GetMentions(since_id=old_rep.id)
+    if reps != []:
+        for rep in reps:
+            rep_user_id = rep.user.screen_name
+            print rep_user_id
+            if rep_user_id == "airtoxinbotbot":
+                continue
+            replie = generate_replie(rep_user_id)
+            twitpic = generate_twitpic()
+            replie = m.sub(twitpic, replie)
+            status = api.PostUpdate(replie)
+            try:
+                print "replie:"+status.text
+            except UnboundLocalError:
+                pass
+    saveObject(reps[0], "old_replie.dump")
 
 def refollow():
     pass
@@ -171,6 +206,6 @@ if __name__ == "__main__":
     markov_dict = updateMarkovDictionary(user_timeline)
     tweet = generateMarkovSentence(markov_dict)
     sendTweet(tweet)
-    sendReply()
-    refollow()
-    favouriteTimeline()
+    #sendReply()
+    #refollow()
+    #favouriteTimeline()
