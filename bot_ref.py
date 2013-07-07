@@ -317,12 +317,12 @@ class AbstractedlyListener(StreamListener):
         #パクリ
         if not status_text in self.timeline_statuses:
             #誰もパクってないツイートだったら何もしない
-            self.timeline_statuses[status_text] = 1
+            self.timeline_statuses[status_text] = [status]
             if len(self.timeline_statuses) > 400:
                 #保存TLが400を超えたら古いものから200個を削除
                 for i in range(200):
                     self.timeline_statuses.popitem(last=False)
-        elif self.timeline_statuses[status_text] == COPY_THRESHOLD: #パクリのスレッショルド
+        elif len(self.timeline_statuses[status_text]) == COPY_THRESHOLD: #パクリのスレッショルド
             #RTだったら公式RTする
             if status_text.find("RT") == 0:
                 try:
@@ -330,17 +330,19 @@ class AbstractedlyListener(StreamListener):
                 except (tweepy.error.TweepError, AttributeError) as e:
                     print "failure retweet (%s) on AbstractedlyListener.timeline_watcher()" % e.message
             else: #誰かがパクってたツイートならパクる
-                self.timeline_statuses[status_text] += 1
-                Bot().api.create_favorite(status.id)
-                print "copy: %s" % status_text
-                try:
+                self.timeline_statuses[status_text].append(status)
+                try: 
+                    for sts in self.timeline_statuses[status_text]:
+                        time.sleep(1)
+                        Bot().api.create_favorite(sts.id)
+                    print "copy: %s" % status_text
                     time.sleep(3)
                     Bot().send_tweet(status_text)
                 except Exception as e:
                     print "failure copy tweet (%s) on AbstractedlyListener.timeline_watcher()" % e.message
         else:
             #パクリ済みならふぁぼるだけ
-            self.timeline_statuses[status_text] += 1
+            self.timeline_statuses[status_text].append(status)
             try:
                 Bot().api.create_favorite(status.id)
             except (tweepy.error.TweepError, AttributeError) as e:
