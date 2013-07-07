@@ -34,7 +34,7 @@ cronで動かせるサーバーがないので自分のPCで動かしたい！
 bot.pyの代わりにこっちを動かすと定期的にbotを動かしてくれます。
 投稿間隔はsettingsのcron_timeで設定出来ます。
 
-##likecron.py
+##bot2.py
 リプライ、ふぁぼ、パクリ用
 
 ##settingsについて
