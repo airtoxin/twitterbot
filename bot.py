@@ -198,12 +198,17 @@ class MarkovGenerator:
             (u"__start__", u"はじめの"): u"言葉に",
             (u"はじめの", u"言葉に"): u"続く言葉",
             (u"言葉に", u"続く言葉"): u"__end__"
-        }"""
-    def __init__(self, markov_dictionary=None, start_point_word=u"\\start\\", end_point_word=u"\\end\\"):
+        }
+    逆連鎖辞書もend→startの方向"""
+    def __init__(self, markov_dictionary=None, reversed_markov_dictionary=None, start_point_word=u"\\start\\", end_point_word=u"\\end\\"):
         if markov_dictionary != None:
             self.dictionary = markov_dictionary
         else:
             self.dictionary = dict()
+        if reversed_markov_dictionary != None:
+            self.reversed_dictionary = reversed_markov_dictionary
+        else:
+            self.reversed_dictionary = dict()
         self.start_point_word = start_point_word
         self.end_point_word = end_point_word
     def generate(self, min_length=3, max_length=50):
@@ -216,10 +221,44 @@ class MarkovGenerator:
                 if len(markov_sentence) > min_length:
                     break
                 else:
-                    markov_sentence = self.generate(1, 30)
+                    markov_sentence = self.generate()
             else:
                 if len(markov_sentence + chosen_word) <= max_length:
                     markov_sentence += chosen_word
+                    start_word = (start_word[1], chosen_word)
+                else:
+                    break
+        return markov_sentence
+    def generate_from_word(self, word, min_length=3, max_length=25):
+        u"""ある単語から前方向と後ろ方向にマルコフ連鎖して文字列をつくる"""
+        # 後ろ方向に伸ばす
+        if len([key for key in self.dictionary if key[0] == word]) == 0 \
+        or len([key for key in self.reversed_dictionary if key[0] == word]) == 0:
+            return self.generate()
+        start_word = random.choice([key for key in self.dictionary if key[0] == word])
+        markov_sentence = start_word[0]
+        while 1:
+            chosen_word = random.choice(self.dictionary[start_word])
+            if chosen_word == self.end_point_word:
+                if len(markov_sentence) > min_length:
+                    break
+                else:
+                    markov_sentence = self.generate_from_word(word)
+            else:
+                if len(markov_sentence + chosen_word) <= max_length:
+                    markov_sentence += chosen_word
+                    start_word = (start_word[1], chosen_word)
+                else:
+                    break
+        # 前方向に伸ばす
+        start_word = random.choice([key for key in self.reversed_dictionary if key[0] == word])
+        while 1:
+            chosen_word = random.choice(self.reversed_dictionary[start_word])
+            if chosen_word == self.start_point_word:
+                break
+            else:
+                if len(markov_sentence + chosen_word) <= max_length * 2:
+                    markov_sentence = chosen_word + markov_sentence
                     start_word = (start_word[1], chosen_word)
                 else:
                     break
@@ -231,32 +270,54 @@ class MarkovGenerator:
         このu"はじめ"を選ぶための関数"""
         start_words = [start_word for start_word in self.dictionary.iterkeys() if start_word[0] == self.start_point_word]
         return random.choice(start_words)
-    def add_from_dictionary(self, dictionary):
+    def add_from_dictionary(self, user_dictionary):
         u"""辞書型からマルコフ辞書に追加する"""
-        if not isinstance(dictionary, dict):
+        if not isinstance(user_dictionary, dict):
             raise Exception, "add_from_dictionary args must be dictionary"
-        for key in dictionary:
+        #正順マルコフ辞書
+        for key in user_dictionary:
             if key in self.dictionary:
-                self.dictionary[key] += dictionary[key]
+                self.dictionary[key].append(user_dictionary[key])
             else:
-                self.dictionary[key] = [dictionary[key]]
+                self.dictionary[key] = [user_dictionary[key]]
+        #逆連鎖マルコフ辞書
+        word_sets = []
+        for key in user_dictionary:
+            for i in range(len(user_dictionary[key])):
+                word_sets.append((user_dictionary[key].pop(), key[1], key[0]))
+        for word_set in word_sets:
+            key = (word_set[0], word_set[1])
+            if key in self.reversed_dictionary:
+                self.reversed_dictionary[key].append(word_set[2])
+            else:
+                self.reversed_dictionary[key] = [word_set[2]]
     def add_from_sentence(self, sentence):
         u"""文字列からマルコフ辞書に追加する"""
         wakati = self.get_wakati_sentence(sentence)
         wakati.insert(0, self.start_point_word)
         wakati.append(self.end_point_word)
+        #正順マルコフ辞書
         for i in range(len(wakati)-2):
             key = (wakati[i], wakati[i+1])
             if key in self.dictionary:
                 self.dictionary[key].append(wakati[i+2])
             else:
                 self.dictionary[key] = [wakati[i+2]]
+        #逆連鎖マルコフ辞書
+        for i in reversed(range(len(wakati)-2)):
+            key = (wakati[i+2], wakati[i+1])
+            if key in self.reversed_dictionary:
+                self.reversed_dictionary[key].append(wakati[i])
+            else:
+                self.reversed_dictionary[key] = [wakati[i]]
     def save_dictionary(self):
         u"""shelveによってマルコフ辞書を永続化"""
         save_data(self.dictionary, "markov_dictionary")
+        save_data(self.reversed_dictionary, "reversed_markov_dictionary")
     def load_dictionary(self):
         u"""shelveによって永続化したマルコフ辞書を読み込む"""
         self.dictionary = load_data("markov_dictionary")
+        self.reversed_dictionary = load_data("reversed_markov_dictionary")
     def get_wakati_sentence(self, sentence):
         u"""文字列を分かち書きしたものを返す"""
         mec = MeCab.Tagger("-Owakati")
@@ -340,13 +401,18 @@ class AbstractedlyListener(StreamListener):
                     Bot().send_tweet(status_text)
                 except Exception as e:
                     print "failure copy tweet (%s) on AbstractedlyListener.timeline_watcher()" % e.message
+                #辞書に追加
+                MarkovGenerator().add_from_sentence(status_text)
         else:
             #パクリ済みならふぁぼるだけ
             self.timeline_statuses[status_text].append(status)
-            try:
-                Bot().api.create_favorite(status.id)
-            except (tweepy.error.TweepError, AttributeError) as e:
-                print "failure favorite tweet (%s) on AbstractedlyListener.timeline_watcher()" % e.message
+            if status.id == 350698977273978880:
+                pass
+            else:
+                try:
+                    Bot().api.create_favorite(status.id)
+                except (tweepy.error.TweepError, AttributeError) as e:
+                    print "failure favorite tweet (%s) on AbstractedlyListener.timeline_watcher()" % (e.message)
     def fav_tweet(self, status):
         logging.debug("AbstractedlyListener.fav_tweet()")
         #キューからふぁぼワードを取り出す
@@ -380,7 +446,15 @@ class AbstractedlyListener(StreamListener):
             else:
                 time.sleep(5)
                 reply_from = u"@" + str(status.author.screen_name)
-                reply = reply_from + u" " + to_plane_tweet(MarkovGenerator(markov_dictionary=load_data("markov_dictionary")).generate())
+                hinshis = get_hinshi(status.text)
+                if len(hinshis) > 0:
+                    #リプライに含まれる最後の品詞を取り出す
+                    hinshi = hinshis[len(hinshis)-1]
+                    m = MarkovGenerator()
+                    m.load_dictionary()
+                    reply = reply_from + u" " + to_plane_tweet(m.generate_from_word(hinshi))
+                else:
+                    reply = reply_from + u" " + to_plane_tweet(MarkovGenerator(markov_dictionary=load_data("markov_dictionary")).generate())
                 Bot().send_tweet(reply, in_reply_to=status.id)
                 save_data(status.id, "replied_tweet_id")
 
@@ -402,7 +476,7 @@ def main():
             markov.add_from_sentence(tweet)
         markov.save_dictionary()
     else:
-        markov = MarkovGenerator(markov_dictionary=load_data("markov_dictionary"))
+        markov = MarkovGenerator(markov_dictionary=load_data("markov_dictionary"), reversed_markov_dictionary=load_data("reversed_markov_dictionary"))
     # 20分ごとの定期ツイート
     #multiprocess間での値のやり取り用変数
     logging.info("regular tweet starting")
