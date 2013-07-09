@@ -395,12 +395,15 @@ class AbstractedlyListener(StreamListener):
                 try: 
                     for sts in self.timeline_statuses[status_text]:
                         time.sleep(1)
-                        Bot().api.create_favorite(sts.id)
+                        try:
+                            Bot().api.create_favorite(sts.id)
+                        except:
+                            print "failure favorite tweet on AbstractedlyListener.timeline_watcher()"
                     print "copy: %s" % status_text
                     time.sleep(3)
                     Bot().send_tweet(status_text)
                 except Exception as e:
-                    print "failure copy tweet (%s) on AbstractedlyListener.timeline_watcher()" % e.message
+                    print "failure copy tweet on AbstractedlyListener.timeline_watcher()"
                 #辞書に追加
                 MarkovGenerator().add_from_sentence(status_text)
         else:
@@ -435,7 +438,7 @@ class AbstractedlyListener(StreamListener):
                     Bot().api.create_favorite(status.id)
                     print "fav: %s" % status.text
                 except tweepy.error.TweepError as e:
-                    print "failure favorite (%s, %s, %s) on AbstractedlyListener.fav_tweet" % (e.message, status.text, status.id)
+                    print "failure favorite on AbstractedlyListener.fav_tweet"
                 break
     def if_reply(self, status):
         if status.text.find("@airtoxinbotbot") != -1:
