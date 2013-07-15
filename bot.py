@@ -229,7 +229,7 @@ class MarkovGenerator:
                 else:
                     break
         return markov_sentence
-    def generate_from_word(self, word, min_length=3, max_length=25):
+    def generate_from_word(self, word, min_length=1, max_length=25):
         u"""ある単語から前方向と後ろ方向にマルコフ連鎖して文字列をつくる"""
         # 後ろ方向に伸ばす
         if len([key for key in self.dictionary if key[0] == word]) == 0 \
@@ -337,10 +337,12 @@ class MarkovGenerator:
 
 #==========*User stream*==========#
 class AbstractedlyListener(StreamListener):
+    def __init__(self, *args, **kwargs):
+        super(AbstractedlyListener, self).__init__()
+        self.replied_users = []
+        self.timeline_statuses = OrderedDict() #追加順を保持する辞書型
+
     """ Let's stare abstractedly at the User Streams ! """
-    def on_connect(self):
-        u"""ストリーミングサーバーに接続された時に1度だけ呼び出される__init__的な関数"""
-        pass
     def on_status(self, status):
         u"""新しいstatusが流れてきたら呼び出される"""
         if not hasattr(status, "text"):
@@ -369,9 +371,6 @@ class AbstractedlyListener(StreamListener):
         return
     def timeline_watcher(self, status):
         u"""ふぁぼパクリRT"""
-        #TL監視用辞書
-        if not hasattr(self, "timeline_statuses"):
-            self.timeline_statuses = OrderedDict() #追加順を保持する辞書型
         status_text = status.text.rstrip()
         #ふぁぼ
         self.fav_tweet(status)
@@ -438,7 +437,7 @@ class AbstractedlyListener(StreamListener):
                     Bot().api.create_favorite(status.id)
                     print "fav: %s" % status.text
                 except tweepy.error.TweepError as e:
-                    print "failure favorite on AbstractedlyListener.fav_tweet"
+                    print "failure favorite (%s, %s, %s) on AbstractedlyListener.fav_tweet" % (e.message, status.text, status.id)
                 break
     def if_reply(self, status):
         if status.text.find("@airtoxinbotbot") != -1:
@@ -447,20 +446,35 @@ class AbstractedlyListener(StreamListener):
             elif status.text.find("RT") == 0: #公式/非公式RT処理
                 pass
             else:
-                time.sleep(5)
-                reply_from = u"@" + str(status.author.screen_name)
-                hinshis = get_hinshi(status.text)
-                if len(hinshis) > 0:
-                    #リプライに含まれる最後の品詞を取り出す
-                    hinshi = hinshis[len(hinshis)-1]
-                    m = MarkovGenerator()
-                    m.load_dictionary()
-                    reply = reply_from + u" " + to_plane_tweet(m.generate_from_word(hinshi))
+                self.replied_users.append(status.author.id)
+                if len(self.replied_users) > 5:
+                    self.replied_users.pop(0)
+                if self.replied_users.count(status.author.id) == 5:
+                    time.sleep(5)
+                    self.send_reply_limit_message(status)
                 else:
-                    reply = reply_from + u" " + to_plane_tweet(MarkovGenerator(markov_dictionary=load_data("markov_dictionary")).generate())
-                Bot().send_tweet(reply, in_reply_to=status.id)
-                save_data(status.id, "replied_tweet_id")
-
+                    time.sleep(5)
+                    self.send_regular_reply(status)
+    def send_reply_limit_message(self, status):
+        reply_user_name = unicode(status.author.screen_name)
+        limit_message = u"%sさんが僕のこと好きすぎます…" % reply_user_name
+        Bot().send_tweet(limit_message)
+    def send_regular_reply(self, status):
+        hinshis = get_hinshi(status.text)
+        if len(hinshis) > 0:
+            #リプライに含まれる最後の品詞を取り出す
+            hinshi = hinshis[len(hinshis)-1]
+            m = MarkovGenerator()
+            m.load_dictionary()
+            reply_message = to_plane_tweet(m.generate_from_word(hinshi))
+        else:
+            reply_message = to_plane_tweet(MarkovGenerator(markov_dictionary=load_data("markov_dictionary")).generate())
+        self.send_reply(status, reply_message)
+    def send_reply(self, status, reply_message):
+        reply_from = u"@" + str(status.author.screen_name)
+        reply = reply_from + u" " + reply_message
+        Bot().send_tweet(reply, in_reply_to=status.id)
+        save_data(status.id, "replied_tweet_id")
 
 def main():
     logging.info("bot starting")
