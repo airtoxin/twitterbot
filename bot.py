@@ -58,20 +58,22 @@ def save_data(data, key):
     open_data[key] = data
     open_data.close()
 
-def get_hinshi(sentence):
+def get_keyword(sentence):
     u"""品詞のみを取り出したリストを返す"""
     if isinstance(sentence, unicode):
         sentence = sentence.encode("utf-8")
-    hinshis = []
+    keywords = []
     tagger = MeCab.Tagger('-Ochasen')
     node = tagger.parseToNode(sentence)
     while node:
         feature = node.feature.decode("utf-8").split(",")
         surface = node.surface.decode("utf-8")
-        if feature[0] == u"名詞":
-            hinshis.append(surface)
+        if (feature[0] == u"名詞" or feature[0] == u"形容詞"\
+        or feature[0] == u"動詞" or feature[0] == u"助動詞")\
+        and (feature[1] != u"非自立" and feature[1] != u"数"):
+            keywords.append(surface)
         node = node.next
-    return hinshis
+    return keywords
 
 def to_plane_tweet(tweet_text):
     tweet_text = r_rep.sub("", tweet_text)
@@ -109,8 +111,8 @@ def regular_tweet(bot_ins, markov_ins):
         tweet_text = to_plane_tweet(markov_ins.generate())
         logging.debug("tweet_text: %s" % tweet_text)
         bot_ins.send_tweet(tweet_text)
-        hinshis = [hinshi for hinshi in get_hinshi(tweet_text) if len(hinshi) > 1]
-        QUE.put(hinshis, True, 1)
+        keywords = [keyword for keyword in get_keyword(tweet_text) if len(keyword) > 1]
+        QUE.put(keywords, True, 1)
         time.sleep(1200)
 
 
@@ -461,13 +463,13 @@ class AbstractedlyListener(StreamListener):
         limit_message = u"%sさんが僕のこと好きすぎます…" % reply_user_name
         Bot().send_tweet(limit_message)
     def send_regular_reply(self, status):
-        hinshis = get_hinshi(status.text)
-        if len(hinshis) > 0:
+        keywords = get_keyword(status.text)
+        if len(keywords) > 0:
             #リプライに含まれる最後の品詞を取り出す
-            hinshi = hinshis[len(hinshis)-1]
+            keyword = keywords[len(keywords)-1]
             m = MarkovGenerator()
             m.load_dictionary()
-            reply_message = to_plane_tweet(m.generate_from_word(hinshi))
+            reply_message = to_plane_tweet(m.generate_from_word(keyword))
         else:
             reply_message = to_plane_tweet(MarkovGenerator(markov_dictionary=load_data("markov_dictionary")).generate())
         self.send_reply(status, reply_message)
