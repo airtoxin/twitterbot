@@ -35,6 +35,9 @@ DELETE_MESSAGE = [u"ツ消見", u"ツイの消しか"]
 #パクリをする閾値
 COPY_THRESHOLD = 1
 
+#csvからツイートを読み込む
+load_csv = True
+
 #==========*グローバル関数*==========#
 def get_oauth():
     consumer_key = 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
@@ -154,6 +157,14 @@ class FavWords:
         self.favs = dict()
         self.to_unicode = lambda x: x.decode("utf-8") if isinstance(x, str) else x
         self.favs["init"] = set([self.to_unicode(word) for word in wordlist])
+    def __repr__(self):
+        s = ""
+        for word in self.iterwords():
+            s = s + ", " + word
+        return s
+    def __str__(self):
+        return self.__repr__()
+
     def iterwords(self):
         return (value for key in self.favs.iterkeys() for value in self.favs[key])
     def add_words(self, key, wordlist):
@@ -345,14 +356,9 @@ class AbstractedlyListener(StreamListener):
     """ Let's stare abstractedly at the User Streams ! """
     def on_status(self, status):
         u"""新しいstatusが流れてきたら呼び出される"""
-        if not hasattr(status, "text"):
-            status.text = random.choice(NOTEXT_MESSAGE)
-            logging.info("status has no text")
-        if isinstance(status.text, str):
-            status.text = status.text.decode("utf-8")
-        if not hasattr(status, "id"):
-            status.id = 350698977273978880
-            logging.info("status has no id")
+        status.text = random.choice(NOTEXT_MESSAGE) if not hasattr(status, "text") else status.text
+        status.text = status.text.decode("utf-8") if isinstance(status.text, str) else status.text
+        status.id = 350698977273978880 if not hasattr(status, "id") else status.id
         # timezone is JP
         status.created_at += timedelta(hours=9)
         self.if_reply(status)
@@ -418,16 +424,11 @@ class AbstractedlyListener(StreamListener):
     def fav_tweet(self, status):
         logging.debug("AbstractedlyListener.fav_tweet()")
         #キューからふぁぼワードを取り出す
-        try:
-            regular_favs = QUE.get_nowait()
-            FAV_WORDS.del_key("regular")
-            FAV_WORDS.add_words("regular", regular_favs)
-            print "FAV_WORDS:",
-            for FAV_WORD in FAV_WORDS.iterwords():
-                print FAV_WORD,
-            print ""
-        except:
-            logging.debug("QUE has no new fav word")
+        regular_favs = QUE.get_nowait()
+        FAV_WORDS.del_key("regular")
+        FAV_WORDS.add_words("regular", regular_favs)
+        print "FAV_WORDS:",
+        print FAV_WORDS
         for word in FAV_WORDS.iterwords():
             if status.text.find(word) != -1:
                 logging.debug("find word '%s' in '%s'" % (word, status.text))
@@ -511,7 +512,6 @@ QUE = Queue()
 logging.basicConfig(level=logging.CRITICAL)
 r_url = re.compile(r"https?://[\w/:%#\$&\?\(\)~\.=\+\-]+")
 r_rep = re.compile(r"@\w+")
-load_csv = True
 
 if __name__ == "__main__":
     main()

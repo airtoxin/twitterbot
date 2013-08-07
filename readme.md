@@ -10,7 +10,12 @@
 MeCabがインストールされている環境で動かすことができます。
 
 ##使用方法
-`$ python bot.py`
+forever.shを開いてxxxxxxxxxxxx@xxxxx.xxxのところを自分のメールアドレスにします。なんかエラーが出た時にエラー内容をメールで送信します。そのあと自動で復帰します。
+
+```
+chmod 755 forever.sh
+./forever.sh
+```
 
 bot.pyと同じ階層にtwitter公式のツイート履歴(tweet.csv)を置くとそれを読み込みます
 動かすときにdata.dbが有るとツイートが偏るので消して下さい。
