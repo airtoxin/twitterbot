@@ -1,4 +1,4 @@
-#twitter-bot (airtoxinbotbot)
+#twitter-bot (airtoxinbotbot)[Deprecated]
 指定ユーザーのタイムラインからマルコフ連鎖した文章をツイートするbotです。
 それとなくふぁぼったりパクったりRTしたりします。
 どことなくそれっぽいリプライも返します。
